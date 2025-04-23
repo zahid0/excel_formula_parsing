@@ -38,98 +38,137 @@ def excel_sheet_to_js_function(
     excel_filename, sheet_name=None, min_cell=None, max_cell=None
 ):
     """
-    Reads an Excel (.xlsx) file and returns a string containing JavaScript code.
-
-    The generated JavaScript function has the same name as the sheet (sanitized to a valid
-    JavaScript function identifier) and is defined as:
-
-         function FUNCTION_NAME(d) { ... return computed; }
-
-    Where d is an object with input cell values.
-
-    Any cell with a formula (a string starting with "=") is processed as a computed cell.
-    Intermediate computed values are computed in the order they appear in the worksheet
-    (using row-order iteration), so that a cell computed earlier can be used later.
-
-    Optional limit parameters:
-      - min_cell: e.g. "A1" (upper-left cell). Only cells with coordinates not less than min_cell
-                  are processed.
-      - max_cell: e.g. "D10" (lower-right cell). Only cells with coordinates not greater than max_cell
-                  are processed.
+    Reads an Excel (.xlsx) file and returns a string containing JavaScript code
+    for a function and an example input object `d` containing only the necessary
+    input cells used in formulas.
     """
-
-    # Load the workbook and select the sheet
     wb = load_workbook(excel_filename, data_only=False)
     ws = wb[sheet_name] if sheet_name else wb.active
-
-    # Use worksheet title for function name and sanitize it.
     js_func_name = sanitize_function_name(ws.title)
-
-    # Regular expression pattern to match Excel cell references (e.g., A1, B12)
     cell_ref_pattern = r"(\b[A-Z]+[0-9]+\b)"
 
-    # This list will hold (cell_coordinate, js_expression) for all formula cells.
     computed_cells = []
+    formula_dependencies = {}
+    input_cells = {}
 
-    # Process every cell in the worksheet in row order.
+    # First pass: collect all computed cells, their dependencies, and input cells
     for row in ws.iter_rows():
         for cell in row:
             cell_coord = cell.coordinate
-            # If range limits are provided, skip cells outside the range.
-            if min_cell and max_cell:
-                if not is_within_range(cell_coord, min_cell, max_cell):
+            if min_cell or max_cell:
+                if not is_within_range(cell_coord, min_cell or "A1", max_cell or "XFD1048576"):
                     continue
-            elif min_cell:
-                # Use Excel's maximum known cell coordinate "XFD1048576" as upper bound.
-                if not is_within_range(cell_coord, min_cell, "XFD1048576"):
-                    continue
-            elif max_cell:
-                if not is_within_range(cell_coord, "A1", max_cell):
-                    continue
-
-            # If the cell contains a formula (data_type "f"), process it.
             if cell.data_type == "f":
                 formula = cell.value
-                if formula and isinstance(formula, str) and formula.startswith("="):
-                    # Remove the leading "=".
+                if isinstance(formula, str) and formula.startswith("="):
                     clean_formula = formula[1:]
-                    # Replace Excel cell references (e.g., A1) with JS object's property access: d["A1"]
-                    js_expression = re.sub(cell_ref_pattern, r'd["\1"]', clean_formula)
-                    computed_cells.append((cell_coord, js_expression))
+                    referenced_cells = re.findall(cell_ref_pattern, clean_formula)
+                    formula_dependencies[cell_coord] = referenced_cells
+                    computed_cells.append((cell_coord, clean_formula))
+            else:
+                value = cell.value
+                input_cells[cell_coord] = value
 
-    # Build the JavaScript function code as a list of lines.
+    # Collect only input cells that are referenced by formulas
+    referenced_input_cells = set()
+    for cell, refs in formula_dependencies.items():
+        for ref in refs:
+            if ref in input_cells:
+                referenced_input_cells.add(ref)
+
+    # Build dependency graph
+    dependency_graph = {}
+    for cell, _ in computed_cells:
+        dependency_graph[cell] = []
+        for ref_cell in formula_dependencies.get(cell, []):
+            if any(c == ref_cell for c, _ in computed_cells):
+                dependency_graph[cell].append(ref_cell)
+
+    # Perform topological sort
+    from collections import defaultdict, deque
+    in_degree = defaultdict(int)
+    graph = defaultdict(list)
+    nodes = list(dependency_graph.keys())
+
+    for node in nodes:
+        for neighbor in dependency_graph[node]:
+            if neighbor in nodes:
+                graph[neighbor].append(node)
+                in_degree[node] += 1
+
+    queue = deque()
+    for node in nodes:
+        if in_degree.get(node, 0) == 0:
+            queue.append(node)
+
+    sorted_order = []
+    while queue:
+        node = queue.popleft()
+        sorted_order.append(node)
+        for neighbor in graph[node]:
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    if len(sorted_order) != len(nodes):
+        raise ValueError("Circular dependency detected in formulas")
+
+    cell_formula_map = {cell: formula for cell, formula in computed_cells}
+
+    sorted_computed_cells = []
+    for cell in sorted_order:
+        formula = cell_formula_map[cell]
+        def replace_reference(match):
+            ref_cell = match.group(1)
+            if ref_cell in cell_formula_map:
+                return f'computed["{ref_cell}"]'
+            else:
+                return f'd["{ref_cell}"]'
+        js_expression = re.sub(cell_ref_pattern, replace_reference, formula)
+        sorted_computed_cells.append((cell, js_expression))
+
+    # Build JavaScript function code
     js_lines = [
         f"function {js_func_name}(d) {{",
         "    // d is an object containing input cell values",
         "    let computed = {};",
     ]
 
-    # Add computed cell assignments in order. This supports intermediate computations.
-    for cell_coord, expression in computed_cells:
+    for cell_coord, expression in sorted_computed_cells:
         js_lines.append(f"    computed['{cell_coord}'] = {expression};")
 
     js_lines.append("    return computed;")
     js_lines.append("}")
 
-    # Return the JS function code as a string.
+    # Build the d object containing only referenced input cells
+    d_lines = ["const d = {"]
+    for cell in sorted(referenced_input_cells):
+        value = input_cells[cell]
+        if isinstance(value, str):
+            str_value = f'"{value}"'
+        else:
+            str_value = str(value)
+        d_lines.append(f'    "{cell}": {str_value},')
+    if referenced_input_cells:
+        d_lines[-1] = d_lines[-1].rstrip(',')
+    d_lines.append("};")
+    d_object = "\n".join(d_lines)
+
     js_function_code = "\n".join(js_lines)
-    return js_function_code
+    return f"// Function\n{js_function_code}\n\n// Example Input\n{d_object}"
 
-
-# ------------------------------
 # Example usage:
 if __name__ == "__main__":
-    excel_file = "example.xlsx"  # Replace with the path to your Excel file.
+    excel_file = "test_formula_sheet.xlsx"
 
     # Optionally limit the processed cells:
     min_cell = "A1"
     max_cell = "D20"
 
     # Specify a sheet name if needed, otherwise the active sheet is used.
-    sheet = None  # or e.g., "Sheet1"
+    sheet = "fun2"  # or e.g., "Sheet1"
 
     js_code = excel_sheet_to_js_function(
         excel_file, sheet_name=sheet, min_cell=min_cell, max_cell=max_cell
     )
-    print("Generated JavaScript function code:")
     print(js_code)
