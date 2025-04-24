@@ -85,64 +85,110 @@ The generated JavaScript function can be used in web applications to replicate t
 
 ## Usage
 
-### Function Parameters
+This tool converts Excel sheet formulas into JavaScript functions that can be used in web applications. It processes specified cells or ranges of cells and generates corresponding JavaScript code.
 
-The `excel_sheet_to_js_function` takes the following parameters:
+## Command Line Arguments
 
-- `excel_filename`: Path to your Excel file (.xlsx)
-- `sheet_name`: Name of the sheet to process (optional, default is the active sheet)
-- `min_cell`: Minimum cell coordinate to process (optional)
-- `max_cell`: Maximum cell coordinate to process (optional)
+The tool accepts the following command-line arguments:
 
-### Function Returns
+### Mandatory Argument
+- `excel_file`: Path to your Excel file (`.xlsx`)
 
-The function returns:
-1. A string containing the JavaScript function code
-2. The name of the generated JavaScript function
-3. A string containing the input object `d` with input cell values
+### Optional Arguments
+- `--sheet`: Comma-separated list of sheet names to process
+  - If not provided, all sheets in the Excel file will be processed
+  - Example: `--sheet "Sheet1,Sheet2"`
+
+- `--min_cell`: Minimum cell coordinate to limit processing
+  - Example: `--min_cell A1`
+
+- `--max_cell`: Maximum cell coordinate to limit processing
+  - Example: `--max_cell D20`
+
+- `--include-test-code`: Include test code for verification
+  - When present, includes d_object and console.log() statements
+  - By default, only the JavaScript function code is printed
+  - Example: `--include-test-code`
 
 ### Example Usage
-
-```python
-excel_file = "test_formula_sheet.xlsx"
-sheet_name = "Sheet1"  # or other sheet name
-
-js_function_code, function_name, input_object = excel_sheet_to_js_function(
-    excel_file,
-    sheet_name=sheet_name,
-    min_cell="A1",
-    max_cell="D20"
-)
-
-print("// JavaScript Function:")
-print(js_function_code)
-print("\n// Input Object:")
-print(input_object)
-print("\n// Example usage:")
-print(f"console.log({function_name}(d))")
+```bash
+python excel_to_js.py example.xlsx --sheet "Sheet1,Sheet2" --min_cell A1 --max_cell D20
 ```
 
-### Output
+Or process all sheets without cell limits:
+```bash
+python excel_to_js.py example.xlsx
+```
 
-The generated JavaScript function will look like this:
+To include test code for verification:
+```bash
+python excel_to_js.py example.xlsx --include-test-code
+```
 
+## Explanation
+
+### Sheet Processing
+- If you specify `--sheet "Sheet1,Sheet2"`, only those sheets will be processed
+- If you omit `--sheet`, all sheets in the Excel file are processed
+
+### Cell Range Limitation
+- Use `--min_cell` and `--max_cell` to limit the range of cells processed
+  - Example: `--min_cell A1 --max_cell D20` will process cells from A1 to D20
+
+### Test Code Inclusion
+- By default, only the JavaScript function code is printed
+- When `--include-test-code` is used, additional code including:
+  - A JavaScript object containing the formula data
+  - Example usage with console.log() statements
+- is included in the output
+
+## Common Use Cases
+
+1. Convert formulas from a specific sheet:
+```bash
+python excel_to_js.py example.xlsx --sheet "Sheet1"
+```
+
+2. Convert formulas from multiple sheets:
+```bash
+python excel_to_js.py example.xlsx --sheet "Sheet1,Sheet2,Sheet3"
+```
+
+3. Convert formulas within specific cell range:
+```bash
+python excel_to_js.py example.xlsx --min_cell A1 --max_cell D20
+```
+
+4. Convert all sheets without cell range limits:
+```bash
+python excel_to_js.py example.xlsx
+```
+
+5. Include test code for verification:
+```bash
+python excel_to_js.py example.xlsx --include-test-code
+```
+
+## Output
+
+The tool generates JavaScript code for each processed sheet. By default, it will only print the JavaScript function code. When `--include-test-code` is used, it also prints additional code for testing purposes.
+
+Default output (without `--include-test-code`):
 ```javascript
-functionSheet1(d) {
-    // d is an object containing input cell values
-    let computed = {};
-    computed['B2'] = d['A1'] * 2;
-    computed['C3'] = computed['B2'] + d['B1'];
-    return computed;
+// Code for sheet: Sheet1
+function ConvertExcelSheet(d) {
+    // ... [JavaScript code]
 }
 ```
 
-The input object will look like this:
-
+Output with `--include-test-code`:
 ```javascript
-const d = {
-    "A1": 10,
-    "B1": 5,
-};
+// Code for sheet: Sheet1
+function ConvertExcelSheet(d) {
+    // ... [JavaScript code]
+}
+const d_object = { /* ... data object ... */ };
+console.log(ConvertExcelSheet(d));
 ```
 
 ## How It Works

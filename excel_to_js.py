@@ -1,3 +1,4 @@
+import argparse
 import re
 
 from openpyxl import load_workbook
@@ -146,7 +147,7 @@ def excel_sheet_to_js_function(
     js_lines.append("}")
 
     # Build the d object containing only referenced input cells
-    d_lines = ["const d = {"]
+    d_lines = ["{"]
     for cell in sorted(referenced_input_cells):
         value = input_cells[cell]
         if isinstance(value, str):
@@ -163,18 +164,65 @@ def excel_sheet_to_js_function(
     return js_function_code, js_func_name, d_object
 
 
-# Example usage:
-if __name__ == "__main__":
-    excel_file = "test_formula_sheet.xlsx"
-
-    # Optionally limit the processed cells:
-    min_cell = "A1"
-    max_cell = "D20"
-
-    # Specify a sheet name if needed, otherwise the active sheet is used.
-    sheet = "fun2"  # or e.g., "Sheet1"
-
-    js_function_code, function_name, d_object = excel_sheet_to_js_function(
-        excel_file, sheet_name=sheet, min_cell=min_cell, max_cell=max_cell
+def main():
+    # Setup argument parser
+    parser = argparse.ArgumentParser(
+        description="Convert Excel sheet to JavaScript function"
     )
-    print(f"{js_function_code}\n\n{d_object}\n\nconsole.log({function_name}(d))")
+    parser.add_argument("excel_file", type=str, help="Path to Excel file")
+    parser.add_argument(
+        "--sheet",
+        type=str,
+        default=None,
+        help="Comma-separated list of sheet names to process. If not provided, all sheets will be processed.",
+    )
+    parser.add_argument(
+        "--min_cell",
+        type=str,
+        default=None,
+        help="Minimum cell coordinate to limit processing",
+    )
+    parser.add_argument(
+        "--max_cell",
+        type=str,
+        default=None,
+        help="Maximum cell coordinate to limit processing",
+    )
+    parser.add_argument(
+        "--include-test-code",
+        action="store_true",
+        help="Include d_object and console.log test code in the output",
+    )
+
+    args = parser.parse_args()
+
+    # Get sheet names
+    wb = load_workbook(args.excel_file)
+
+    if args.sheet:
+        sheet_names = [s.strip() for s in args.sheet.split(",")]
+    else:
+        sheet_names = wb.sheetnames
+
+    for sheet_name in sheet_names:
+        try:
+            js_function_code, function_name, d_object = excel_sheet_to_js_function(
+                args.excel_file,
+                sheet_name=sheet_name,
+                min_cell=args.min_cell,
+                max_cell=args.max_cell,
+            )
+            print(f"// Code for sheet: {sheet_name}")
+            print(js_function_code)
+
+            if args.include_test_code:
+                print(
+                    f'\n\nconst {function_name}_args = {d_object}\n\nconsole.log("Output for {function_name}: ", {function_name}({function_name}_args))\n'
+                )
+
+        except Exception as e:
+            print(f"Error processing sheet {sheet_name}: {str(e)}")
+
+
+if __name__ == "__main__":
+    main()
