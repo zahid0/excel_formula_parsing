@@ -56,7 +56,9 @@ def excel_sheet_to_js_function(
         for cell in row:
             cell_coord = cell.coordinate
             if min_cell or max_cell:
-                if not is_within_range(cell_coord, min_cell or "A1", max_cell or "XFD1048576"):
+                if not is_within_range(
+                    cell_coord, min_cell or "A1", max_cell or "XFD1048576"
+                ):
                     continue
             if cell.data_type == "f":
                 formula = cell.value
@@ -86,6 +88,7 @@ def excel_sheet_to_js_function(
 
     # Perform topological sort
     from collections import defaultdict, deque
+
     in_degree = defaultdict(int)
     graph = defaultdict(list)
     nodes = list(dependency_graph.keys())
@@ -118,12 +121,14 @@ def excel_sheet_to_js_function(
     sorted_computed_cells = []
     for cell in sorted_order:
         formula = cell_formula_map[cell]
+
         def replace_reference(match):
             ref_cell = match.group(1)
             if ref_cell in cell_formula_map:
                 return f'computed["{ref_cell}"]'
             else:
                 return f'd["{ref_cell}"]'
+
         js_expression = re.sub(cell_ref_pattern, replace_reference, formula)
         sorted_computed_cells.append((cell, js_expression))
 
@@ -150,12 +155,13 @@ def excel_sheet_to_js_function(
             str_value = str(value)
         d_lines.append(f'    "{cell}": {str_value},')
     if referenced_input_cells:
-        d_lines[-1] = d_lines[-1].rstrip(',')
+        d_lines[-1] = d_lines[-1].rstrip(",")
     d_lines.append("};")
     d_object = "\n".join(d_lines)
 
     js_function_code = "\n".join(js_lines)
-    return f"// Function\n{js_function_code}\n\n// Example Input\n{d_object}"
+    return js_function_code, js_func_name, d_object
+
 
 # Example usage:
 if __name__ == "__main__":
@@ -168,7 +174,7 @@ if __name__ == "__main__":
     # Specify a sheet name if needed, otherwise the active sheet is used.
     sheet = "fun2"  # or e.g., "Sheet1"
 
-    js_code = excel_sheet_to_js_function(
+    js_function_code, function_name, d_object = excel_sheet_to_js_function(
         excel_file, sheet_name=sheet, min_cell=min_cell, max_cell=max_cell
     )
-    print(js_code)
+    print(f"{js_function_code}\n\n{d_object}\n\nconsole.log({function_name}(d))")
