@@ -74,7 +74,7 @@ The generated JavaScript function can be used in web applications to replicate t
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/excel-to-js-function.git
+   git clone https://github.com/zahid0/excel_formula_parsing
    cd excel-to-js-function
    ```
 
